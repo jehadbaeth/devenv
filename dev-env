@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+# Start a fresh container from the local-dev image. Each name is its own environment.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+
+usage() {
+  cat <<'EOF'
+Usage: ./dev-env <command> [name]
+
+  new [name] [workspace]   Start a new environment. Name defaults to a timestamp.
+  shell <name>             Open zsh in that environment
+  ls                       List environments
+  stop <name>              Stop an environment
+  rm <name>                Remove the container. The workspace directory stays.
+  build                    Rebuild the local-dev image
+
+The container only sees its workspace directory. CURSOR_API_KEY is passed
+through when it is set in the environment or in .env.
+EOF
+}
+
+require_name() {
+  if [[ -z "${1:-}" ]]; then
+    echo "environment name required" >&2
+    exit 1
+  fi
+  if [[ ! "$1" =~ ^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$ ]]; then
+    echo "name must be lowercase letters, numbers, and hyphens" >&2
+    exit 1
+  fi
+}
+
+short_name() {
+  local name="$1"
+  name="${name#devenv-}"
+  printf '%s' "$name"
+}
+
+container_name() {
+  printf 'devenv-%s' "$1"
+}
+
+container_id() {
+  docker ps -aq --filter "label=dev.env=1" --filter "label=dev.env.name=$(container_name "$1")"
+}
+
+workspace_of() {
+  local id
+  id="$(container_id "$1")"
+  if [[ -z "$id" ]]; then
+    echo "no environment named $1" >&2
+    exit 1
+  fi
+  docker inspect --format '{{index .Config.Labels "dev.env.workspace"}}' "$id"
+}
+
+export_host_ids() {
+  export DEVENV_UID="$(id -u)"
+  export DEVENV_GID="$(id -g)"
+}
+
+cmd_build() {
+  export_host_ids
+  docker compose build
+}
+
+cmd_new() {
+  local name="${1:-$(date +%Y%m%d-%H%M%S)}"
+  require_name "$name"
+  local cname workspace
+  cname="$(container_name "$name")"
+  if [[ -n "$(container_id "$name")" ]]; then
+    echo "environment $name already exists" >&2
+    echo "attach with: ./dev-env shell $name" >&2
+    exit 1
+  fi
+  workspace="${2:-$ROOT/environments/$name}"
+  mkdir -p "$workspace"
+  workspace="$(cd "$workspace" && pwd)"
+  export_host_ids
+  export DEVENV_NAME="$cname"
+  export DEVENV_WORKSPACE="$workspace"
+  export COMPOSE_PROJECT_NAME="$cname"
+  docker compose up -d
+  echo "environment $name"
+  echo "workspace   $workspace"
+  echo "shell       ./dev-env shell $name"
+}
+
+cmd_shell() {
+  local name
+  name="$(short_name "${1:-}")"
+  require_name "$name"
+  local id workspace
+  id="$(container_id "$name")"
+  if [[ -z "$id" ]]; then
+    echo "no environment named $name" >&2
+    exit 1
+  fi
+  workspace="$(workspace_of "$name")"
+  docker start "$id" >/dev/null
+  exec docker exec -it -u "$(id -u):$(id -g)" -w "$workspace" "$id" zsh
+}
+
+cmd_ls() {
+  local id name status workspace
+  printf '%-16s %-12s %s\n' NAME STATUS WORKSPACE
+  while read -r id; do
+    [[ -z "$id" ]] && continue
+    name="$(docker inspect --format '{{index .Config.Labels "dev.env.name"}}' "$id")"
+    name="$(short_name "$name")"
+    status="$(docker inspect --format '{{.State.Status}}' "$id")"
+    workspace="$(docker inspect --format '{{index .Config.Labels "dev.env.workspace"}}' "$id")"
+    printf '%-16s %-12s %s\n' "$name" "$status" "$workspace"
+  done < <(docker ps -aq --filter label=dev.env=1)
+}
+
+cmd_stop() {
+  local name
+  name="$(short_name "${1:-}")"
+  require_name "$name"
+  local id
+  id="$(container_id "$name")"
+  if [[ -z "$id" ]]; then
+    echo "no environment named $name" >&2
+    exit 1
+  fi
+  docker stop "$id" >/dev/null
+  echo "stopped $name"
+}
+
+cmd_rm() {
+  local name
+  name="$(short_name "${1:-}")"
+  require_name "$name"
+  local id workspace
+  id="$(container_id "$name")"
+  if [[ -z "$id" ]]; then
+    echo "no environment named $name" >&2
+    exit 1
+  fi
+  workspace="$(workspace_of "$name")"
+  export_host_ids
+  export DEVENV_NAME="$(container_name "$name")"
+  export DEVENV_WORKSPACE="$workspace"
+  export COMPOSE_PROJECT_NAME="$DEVENV_NAME"
+  docker compose down
+  echo "removed $name"
+  echo "workspace kept at $workspace"
+}
+
+case "${1:-}" in
+  new) shift; cmd_new "$@" ;;
+  shell) shift; cmd_shell "$@" ;;
+  ls) cmd_ls ;;
+  stop) shift; cmd_stop "$@" ;;
+  rm) shift; cmd_rm "$@" ;;
+  build) cmd_build ;;
+  -h|--help|help|"") usage ;;
+  *) echo "unknown command: $1" >&2; usage; exit 1 ;;
+esac

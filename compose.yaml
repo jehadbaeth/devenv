@@ -1,0 +1,29 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+      args:
+        UID: ${DEVENV_UID:-1000}
+        GID: ${DEVENV_GID:-1000}
+    image: local-dev:latest
+    container_name: ${DEVENV_NAME:-local-dev}
+    init: true
+    user: "${DEVENV_UID:-1000}:${DEVENV_GID:-1000}"
+    working_dir: ${DEVENV_WORKSPACE:-/workspaces/empty}
+    volumes:
+      - ${DEVENV_WORKSPACE:-.}:${DEVENV_WORKSPACE:-/workspaces/empty}
+    environment:
+      CURSOR_API_KEY: ${CURSOR_API_KEY:-}
+    labels:
+      dev.env: "1"
+      dev.env.name: ${DEVENV_NAME:-local-dev}
+      dev.env.workspace: ${DEVENV_WORKSPACE:-/workspaces/empty}
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    stdin_open: true
+    tty: true
+    command: ["sleep", "infinity"]

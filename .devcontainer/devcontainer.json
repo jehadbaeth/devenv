@@ -1,0 +1,40 @@
+{
+  "name": "local-dev",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "..",
+    "args": {
+      "UID": "1000",
+      "GID": "1000"
+    }
+  },
+  "workspaceFolder": "/workspaces/empty",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/empty,type=bind,consistency=cached",
+  "remoteUser": "dev",
+  "updateRemoteUserUID": false,
+  "runArgs": [
+    "--cap-drop=ALL",
+    "--security-opt=no-new-privileges:true",
+    "--pids-limit=512"
+  ],
+  "containerEnv": {
+    "SSH_AUTH_SOCK": "",
+    "GIT_ASKPASS": "",
+    "CURSOR_API_KEY": "${localEnv:CURSOR_API_KEY}"
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "dev.containers.copyGitConfig": false,
+        "dev.containers.dockerCredentialHelper": false,
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "/bin/zsh"
+          }
+        }
+      }
+    }
+  },
+  "shutdownAction": "stopContainer"
+}

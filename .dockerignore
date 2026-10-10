@@ -1,0 +1,41 @@
+# Version control
+.git/
+.gitignore
+
+# Workspaces created on demand
+environments/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Docker files
+Dockerfile*
+compose.yaml
+docker-compose*.yml
+docker-compose*.yaml
+.dockerignore
+
+# Environment and secrets
+**/.npmrc
+.env
+.env.*
+*.pem
+*.key
+
+# Dependencies and build output
+node_modules/
+.venv/
+venv/
+__pycache__/
+vendor/
+dist/
+build/
+target/
+
+# OS files
+.DS_Store
+Thumbs.db
