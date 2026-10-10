@@ -1,0 +1,19 @@
+#!/bin/bash
+# Source SDKMAN with aliases disabled. The global -h alias rewrites [[ -h ]].
+set -euo pipefail
+
+file="$HOME/.zshrc"
+tmp="$HOME/.zshrc.sdk"
+awk '
+  index($0, "sdkman-init.sh") && index($0, "source") {
+    print "if [[ -s \"$HOME/.sdkman/bin/sdkman-init.sh\" ]]; then"
+    print "  () {"
+    print "    setopt local_options no_aliases"
+    print "    source \"$HOME/.sdkman/bin/sdkman-init.sh\""
+    print "  }"
+    print "fi"
+    next
+  }
+  { print }
+' "$file" > "$tmp"
+mv "$tmp" "$file"

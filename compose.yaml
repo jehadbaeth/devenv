@@ -23,7 +23,12 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    pids_limit: 512
+    mem_limit: 16g
+    cpus: 8
+    pids_limit: 2048
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
     stdin_open: true
     tty: true
     command: ["sleep", "infinity"]

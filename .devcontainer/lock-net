@@ -1,0 +1,67 @@
+#!/bin/sh
+# Drop connections to the host, private networks, and link-local addresses.
+# Public internet stays reachable. DNS is allowed only to the configured
+# nameservers, and only on port 53. Installed from the host into this netns.
+set -eu
+
+valid_ip() {
+  printf '%s\n' "$1" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+}
+
+dns_list=""
+deny_list=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dns)
+      shift
+      dns_list="$dns_list $1"
+      ;;
+    *)
+      deny_list="$deny_list $1"
+      ;;
+  esac
+  shift
+done
+
+iptables -N DEVENV_LOCK 2>/dev/null || iptables -F DEVENV_LOCK
+iptables -C OUTPUT -j DEVENV_LOCK 2>/dev/null || iptables -I OUTPUT 1 -j DEVENV_LOCK
+iptables -F DEVENV_LOCK
+iptables -A DEVENV_LOCK -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+iptables -A DEVENV_LOCK -o lo -j RETURN
+
+for ip in $dns_list 127.0.0.11; do
+  valid_ip "$ip" || continue
+  iptables -A DEVENV_LOCK -d "$ip" -p udp --dport 53 -j RETURN
+  iptables -A DEVENV_LOCK -d "$ip" -p tcp --dport 53 -j RETURN
+done
+
+iptables -A DEVENV_LOCK -d 0.0.0.0/8 -j REJECT
+iptables -A DEVENV_LOCK -d 10.0.0.0/8 -j REJECT
+iptables -A DEVENV_LOCK -d 100.64.0.0/10 -j REJECT
+iptables -A DEVENV_LOCK -d 127.0.0.0/8 -j REJECT
+iptables -A DEVENV_LOCK -d 169.254.0.0/16 -j REJECT
+iptables -A DEVENV_LOCK -d 172.16.0.0/12 -j REJECT
+iptables -A DEVENV_LOCK -d 192.0.0.0/24 -j REJECT
+iptables -A DEVENV_LOCK -d 192.0.2.0/24 -j REJECT
+iptables -A DEVENV_LOCK -d 192.168.0.0/16 -j REJECT
+iptables -A DEVENV_LOCK -d 198.18.0.0/15 -j REJECT
+iptables -A DEVENV_LOCK -d 198.51.100.0/24 -j REJECT
+iptables -A DEVENV_LOCK -d 203.0.113.0/24 -j REJECT
+iptables -A DEVENV_LOCK -d 224.0.0.0/4 -j REJECT
+iptables -A DEVENV_LOCK -d 240.0.0.0/4 -j REJECT
+
+for ip in $deny_list; do
+  valid_ip "$ip" || continue
+  iptables -A DEVENV_LOCK -d "$ip" -j REJECT
+done
+
+iptables -A DEVENV_LOCK -j RETURN
+
+if [ -e /proc/net/if_inet6 ]; then
+  ip6tables -N DEVENV_LOCK 2>/dev/null || ip6tables -F DEVENV_LOCK
+  ip6tables -C OUTPUT -j DEVENV_LOCK 2>/dev/null || ip6tables -I OUTPUT 1 -j DEVENV_LOCK
+  ip6tables -F DEVENV_LOCK
+  ip6tables -A DEVENV_LOCK -o lo -j RETURN
+  ip6tables -A DEVENV_LOCK -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+  ip6tables -A DEVENV_LOCK -j REJECT
+fi

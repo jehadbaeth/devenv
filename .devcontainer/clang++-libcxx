@@ -1,0 +1,3 @@
+#!/bin/sh
+# Bookworm's libstdc++ 12 has no <format>. Blutter needs that header.
+exec /usr/bin/clang++-18 -stdlib=libc++ "$@"

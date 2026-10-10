@@ -9,7 +9,8 @@ usage() {
   cat <<'EOF'
 Usage: ./devenv <command> [name]
 
-  new [name] [workspace]   Start a new environment. Name defaults to a timestamp.
+  new [name] [workspace]   Start an environment. Name defaults to a timestamp.
+                           If the name already exists, replace its container and keep the workspace.
   shell <name>             Open zsh in that environment
   ls                       List environments
   stop <name>              Stop an environment
@@ -18,6 +19,9 @@ Usage: ./devenv <command> [name]
 
 The container only sees its workspace directory. CURSOR_API_KEY is passed
 through when it is set in the environment or in .env.
+
+The container can use the public internet. Connections to this machine,
+private networks, and link-local addresses are dropped.
 EOF
 }
 
@@ -40,6 +44,57 @@ short_name() {
 
 container_name() {
   printf 'devenv-%s' "$1"
+}
+
+refuse_workspace() {
+  local ws="$1"
+  local home blocked
+  home="$(cd "$HOME" && pwd)"
+  case "$ws" in
+    /|/bin|/boot|/dev|/etc|/home|/lib|/lib64|/opt|/proc|/root|/run|/sbin|/sys|/usr|/var)
+      echo "refusing to mount $ws into the container" >&2
+      exit 1
+      ;;
+  esac
+  if [[ "$ws" == "$home" || "$ws" == "$ROOT" ]]; then
+    echo "refusing to mount $ws into the container" >&2
+    exit 1
+  fi
+  for blocked in "$home/.ssh" "$home/.gnupg" "$home/.aws" "$home/.docker" "$home/.kube" "$home/.config/gh"; do
+    if [[ "$ws" == "$blocked" || "$ws" == "$blocked"/* ]]; then
+      echo "refusing to mount $ws into the container" >&2
+      exit 1
+    fi
+  done
+  case "$ws" in
+    /run/*|/var/run/*|/dev/*|/proc/*|/sys/*|/etc/*)
+      echo "refusing to mount $ws into the container" >&2
+      exit 1
+      ;;
+  esac
+}
+
+lock_network() {
+  local id="$1"
+  local -a args=()
+  local ip ns
+  while read -r ns; do
+    [[ -z "$ns" ]] && continue
+    args+=(--dns "$ns")
+  done < <(docker exec "$id" cat /etc/resolv.conf | awk '/^nameserver[[:space:]]/ {print $2}')
+  while read -r ip; do
+    [[ -z "$ip" ]] && continue
+    args+=("$ip")
+  done < <(ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1)
+  docker run --rm \
+    --network "container:${id}" \
+    --user 0:0 \
+    --cap-drop ALL \
+    --cap-add NET_ADMIN \
+    --cap-add NET_RAW \
+    --entrypoint /usr/local/bin/lock-net \
+    local-dev:latest \
+    "${args[@]}"
 }
 
 container_id() {
@@ -71,21 +126,46 @@ cmd_new() {
   require_name "$name"
   local cname workspace
   cname="$(container_name "$name")"
+  local replacing=0
   if [[ -n "$(container_id "$name")" ]]; then
-    echo "environment $name already exists" >&2
-    echo "attach with: ./devenv shell $name" >&2
-    exit 1
+    replacing=1
+    if [[ -n "${2:-}" ]]; then
+      workspace="$2"
+    else
+      workspace="$(workspace_of "$name")"
+    fi
+  else
+    workspace="${2:-$ROOT/environments/$name}"
   fi
-  workspace="${2:-$ROOT/environments/$name}"
+  if [[ "$workspace" != /* ]]; then
+    workspace="$ROOT/$workspace"
+  fi
+  mkdir -p "$(dirname "$workspace")"
+  workspace="$(cd "$(dirname "$workspace")" && pwd)/$(basename "$workspace")"
+  refuse_workspace "$workspace"
   mkdir -p "$workspace"
   workspace="$(cd "$workspace" && pwd)"
+  refuse_workspace "$workspace"
   export_host_ids
   export DEVENV_NAME="$cname"
   export DEVENV_WORKSPACE="$workspace"
   export COMPOSE_PROJECT_NAME="$cname"
-  docker compose up -d
+  if [[ "$replacing" == 1 ]]; then
+    docker compose down
+  fi
+  docker compose up -d --force-recreate
+  local id
+  id="$(container_id "$name")"
+  if ! lock_network "$id"; then
+    docker compose down
+    echo "could not lock the container network; removed $name" >&2
+    exit 1
+  fi
   echo "environment $name"
   echo "workspace   $workspace"
+  if [[ "$replacing" == 1 ]]; then
+    echo "container   reset"
+  fi
   echo "shell       ./devenv shell $name"
 }
 
@@ -101,6 +181,11 @@ cmd_shell() {
   fi
   workspace="$(workspace_of "$name")"
   docker start "$id" >/dev/null
+  if ! lock_network "$id"; then
+    docker stop "$id" >/dev/null
+    echo "could not lock the container network; stopped $name" >&2
+    exit 1
+  fi
   exec docker exec -it -u "$(id -u):$(id -g)" -w "$workspace" "$id" zsh
 }
 

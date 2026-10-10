@@ -1,0 +1,4 @@
+#!/bin/sh
+export CC=/usr/bin/clang-18
+export CXX=/usr/local/bin/clang++-libcxx
+exec python3 /home/dev/blutter/blutter.py "$@"

@@ -1,0 +1,4 @@
+#!/bin/sh
+export JAVA_HOME=/home/dev/.sdkman/candidates/java/current
+export PATH="$JAVA_HOME/bin:$PATH"
+exec /opt/ghidra/ghidraRun "$@"
