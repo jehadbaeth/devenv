@@ -1,4 +1,4 @@
-# dev-env
+# devenv
 
 Local Docker environments for coding agents. Each environment is its own container and can see only one workspace directory. The container has no extra privileges, no Docker socket, and no host SSH agent.
 
@@ -21,9 +21,9 @@ The image includes:
 ## Install
 
 ```bash
-git clone git@github.com:jehadbaeth/dev-env.git
-cd dev-env
-./dev-env build
+git clone git@github.com:jehadbaeth/devenv.git
+cd devenv
+./devenv build
 ```
 
 The build creates the container user with your uid and gid, so files written in a workspace stay owned by you.
@@ -31,18 +31,18 @@ The build creates the container user with your uid and gid, so files written in 
 ## Use
 
 ```bash
-./dev-env new                 # name is a timestamp, workspace is environments/<name>
-./dev-env new api             # workspace is environments/api
-./dev-env new web ~/src/web   # use a directory you already have
-./dev-env shell api           # zsh in that environment
-./dev-env ls
-./dev-env stop api
-./dev-env rm api              # removes the container and keeps the workspace
+./devenv new                 # name is a timestamp, workspace is environments/<name>
+./devenv new api             # workspace is environments/api
+./devenv new web ~/src/web   # use a directory you already have
+./devenv shell api           # zsh in that environment
+./devenv ls
+./devenv stop api
+./devenv rm api              # removes the container and keeps the workspace
 ```
 
-`./dev-env ls` prints the name to pass to the other commands.
+`./devenv ls` prints the name to pass to the other commands.
 
-Open as many terminals as you want on one environment. Each `./dev-env shell api` starts another zsh in the same container. They share that workspace. `stop` and `rm` apply to the whole environment.
+Open as many terminals as you want on one environment. Each `./devenv shell api` starts another zsh in the same container. They share that workspace. `stop` and `rm` apply to the whole environment.
 
 ## Cursor agent
 
@@ -58,7 +58,7 @@ CURSOR_API_KEY=your_key_here
 
 Compose reads `.env` when an environment starts and passes the key into the container. The key is not written into the image. `.env` is gitignored.
 
-You can also sign in inside the environment with `cursor-agent login`. That login lives in the container and is gone after `./dev-env rm`.
+You can also sign in inside the environment with `cursor-agent login`. That login lives in the container and is gone after `./devenv rm`.
 
 OpenCode, Pi, and REA have their own sign-in:
 
@@ -74,7 +74,7 @@ After pulling a newer revision, rebuild and recreate environments. A container k
 
 ```bash
 git pull
-./dev-env build
-./dev-env rm api
-./dev-env new api ~/src/api
+./devenv build
+./devenv rm api
+./devenv new api ~/src/api
 ```

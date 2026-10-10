@@ -7,7 +7,7 @@ cd "$ROOT"
 
 usage() {
   cat <<'EOF'
-Usage: ./dev-env <command> [name]
+Usage: ./devenv <command> [name]
 
   new [name] [workspace]   Start a new environment. Name defaults to a timestamp.
   shell <name>             Open zsh in that environment
@@ -73,7 +73,7 @@ cmd_new() {
   cname="$(container_name "$name")"
   if [[ -n "$(container_id "$name")" ]]; then
     echo "environment $name already exists" >&2
-    echo "attach with: ./dev-env shell $name" >&2
+    echo "attach with: ./devenv shell $name" >&2
     exit 1
   fi
   workspace="${2:-$ROOT/environments/$name}"
@@ -86,7 +86,7 @@ cmd_new() {
   docker compose up -d
   echo "environment $name"
   echo "workspace   $workspace"
-  echo "shell       ./dev-env shell $name"
+  echo "shell       ./devenv shell $name"
 }
 
 cmd_shell() {
